@@ -318,6 +318,40 @@ class Index:
             body=body,
         )
 
+    def search_with_media(
+        self, media: Dict[str, Any], opt_params: Optional[Mapping[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Search in the index using media parameter.
+
+        https://www.meilisearch.com/docs/reference/api/search
+
+        Parameters
+        ----------
+        media:
+            Dictionary containing media fragments to search with.
+        opt_params (optional):
+            Dictionary containing optional query parameters.
+
+        Returns
+        -------
+        results:
+            Dictionary with hits, offset, limit, processingTime and media
+
+        Raises
+        ------
+        MeilisearchApiError
+            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+        """
+        if opt_params is None:
+            opt_params = {}
+
+        body = {"media": media, **opt_params}
+
+        return self.http.post(
+            f"{self.config.paths.index}/{self.uid}/{self.config.paths.search}",
+            body=body,
+        )
+
     @version_error_hint_message
     def facet_search(
         self,
@@ -1012,7 +1046,7 @@ class Index:
             - 'dictionary': List of custom dictionary words
             - 'separatorTokens': List of separator tokens
             - 'nonSeparatorTokens': List of non-separator tokens
-            - 'embedders': Dictionary of embedder configurations for AI-powered search
+            - 'embedders': Dictionary of embedder configurations
             - 'searchCutoffMs': Maximum search time in milliseconds
             - 'proximityPrecision': Precision for proximity ranking
             - 'localizedAttributes': Settings for localized attributes
