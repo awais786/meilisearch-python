@@ -345,7 +345,7 @@ class Index:
         if opt_params is None:
             opt_params = {}
 
-        body = {"media": media, **opt_params}
+        body = {"q": None, "media": media, **opt_params}
 
         return self.http.post(
             f"{self.config.paths.index}/{self.uid}/{self.config.paths.search}",
