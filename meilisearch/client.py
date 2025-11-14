@@ -984,6 +984,71 @@ class Client:
 
         return self.http.patch(f"chats/{workspace_uid}/settings", body=settings)
 
+    def get_experimental_features(self) -> Dict[str, bool]:
+        """Get the current experimental features settings.
+
+        Returns
+        -------
+        experimental_features:
+            Dictionary containing the experimental features and their enabled/disabled status.
+
+        Raises
+        ------
+        MeilisearchApiError
+            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+        """
+        return self.http.get(self.config.paths.experimental_features)
+
+    def update_experimental_features(self, features: Mapping[str, bool]) -> Dict[str, bool]:
+        """Update experimental features settings.
+
+        Parameters
+        ----------
+        features:
+            Dictionary containing the experimental features to enable/disable.
+
+        Returns
+        -------
+        experimental_features:
+            Dictionary containing the updated experimental features settings.
+
+        Raises
+        ------
+        MeilisearchApiError
+            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+        """
+        return self.http.patch(self.config.paths.experimental_features, body=features)
+
+    def enable_multimodal(self) -> Dict[str, bool]:
+        """Enable multimodal experimental feature.
+
+        Returns
+        -------
+        experimental_features:
+            Dictionary containing the updated experimental features settings.
+
+        Raises
+        ------
+        MeilisearchApiError
+            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+        """
+        return self.update_experimental_features({"multimodal": True})
+
+    def disable_multimodal(self) -> Dict[str, bool]:
+        """Disable multimodal experimental feature.
+
+        Returns
+        -------
+        experimental_features:
+            Dictionary containing the updated experimental features settings.
+
+        Raises
+        ------
+        MeilisearchApiError
+            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+        """
+        return self.update_experimental_features({"multimodal": False})
+
     @staticmethod
     def _base64url_encode(data: bytes) -> str:
         return base64.urlsafe_b64encode(data).decode("utf-8").replace("=", "")

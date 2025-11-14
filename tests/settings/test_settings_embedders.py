@@ -95,7 +95,8 @@ def test_huggingface_embedder_format(empty_index):
         }
     }
     response = index.update_embedders(huggingface_embedder)
-    index.wait_for_task(response.task_uid)
+    # HuggingFace model download can take longer, increase timeout to 60 seconds
+    index.wait_for_task(response.task_uid, timeout_in_ms=60000)
     embedders = index.get_embedders()
     assert embedders.embedders["huggingface"].source == "huggingFace"
     assert embedders.embedders["huggingface"].model == "BAAI/bge-base-en-v1.5"
@@ -211,7 +212,8 @@ def test_composite_embedder_format(empty_index):
     }
 
     response = index.update_embedders(composite_embedder)
-    update = index.wait_for_task(response.task_uid)
+    # Composite embedder with HuggingFace can take longer due to model download
+    update = index.wait_for_task(response.task_uid, timeout_in_ms=60000)
     embedders = index.get_embedders()
     assert update.status == "succeeded"
 
