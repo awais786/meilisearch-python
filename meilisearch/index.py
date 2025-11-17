@@ -278,29 +278,21 @@ class Index:
         stats = self.http.get(f"{self.config.paths.index}/{self.uid}/{self.config.paths.stat}")
         return IndexStats(**stats)
 
-    from typing import Optional, Mapping, Dict, Any, List, Union
-    from warnings import warn
-
     @version_error_hint_message
-    def search(
-        self, query: Optional[str] = "", opt_params: Optional[Mapping[str, Any]] = None
-    ) -> Dict[str, Any]:
+    def search(self, query: str, opt_params: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
         """Search in the index.
-
-        Supports traditional text search, vector search, and multimodal search using media fragments.
 
         https://www.meilisearch.com/docs/reference/api/search
 
         Parameters
         ----------
-        query (optional):
-            String containing the searched word(s). Can be empty or None when using media or vector parameter.
+        query:
+            String containing the searched word(s)
         opt_params (optional):
             Dictionary containing optional query parameters.
             Common parameters include:
-            - media: Dict with fragment types (e.g., {"text": "query", "image": "url"}) for multimodal search
             - hybrid: Dict with 'semanticRatio' and 'embedder' fields for hybrid search
-            - vector: List/array of numbers for vector search
+            - vector: Array of numbers for vector search
             - retrieveVectors: Boolean to include vector data in search results
             - filter: Filter queries by an attribute's value
             - limit: Maximum number of documents returned
@@ -313,185 +305,13 @@ class Index:
 
         Raises
         ------
-        ValueError
-            If neither query nor media nor vector parameter is provided, or if parameters are invalid.
         MeilisearchApiError
-            An error containing details about why Meilisearch can't process your request.
-            Meilisearch error codes are described here:
-            https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
-
-        Examples
-        --------
-        Traditional text search:
-            >>> index.search("space exploration")
-
-        Multimodal search with media fragments:
-            >>> index.search("", opt_params={
-            ...     "media": {"text": "space exploration"},
-            ...     "hybrid": {"embedder": "default"}
-            ... })
-
-        Multimodal search with both text and image:
-            >>> index.search("", opt_params={
-            ...     "media": {"text": "space exploration", "image": "https://example.com/poster.jpg"},
-            ...     "hybrid": {"embedder": "default", "semanticRatio": 0.8}
-            ... })
-
-        Hybrid search combining text and semantic:
-            >>> index.search("science fiction", opt_params={
-            ...     "hybrid": {"semanticRatio": 0.5, "embedder": "default"}
-            ... })
-
-        Vector search:
-            >>> index.search("", opt_params={
-            ...     "vector": [0.1, 0.2, 0.3, ...],
-            ...     "hybrid": {"embedder": "default"}
-            ... })
-
-        Notes
-        -----
-        - When both query and media.text are provided, they are combined in the search.
-        - The semanticRatio in hybrid search controls the balance between keyword and semantic search
-          (0.0 = pure keyword, 1.0 = pure semantic).
-        - Vector dimensions must match the embedder's dimensions (e.g., 3072 for text-embedding-3-large).
+            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
         """
         if opt_params is None:
             opt_params = {}
 
-        # Extract special parameters
-        media = opt_params.get("media")
-        vector = opt_params.get("vector")
-        hybrid = opt_params.get("hybrid")
-
-        # ==========================================
-        # VALIDATION SECTION
-        # ==========================================
-
-        # 1. Validate that at least one search input is provided
-        if not query and not media and not vector:
-            raise ValueError(
-                "You must provide at least one search input: "
-                "a query string, media fragments, or a vector."
-            )
-
-        # 2. Validate media parameter
-        if media is not None:
-            if not isinstance(media, dict):
-                raise ValueError(
-                    "The 'media' parameter must be a dictionary with fragment types as keys "
-                    "(e.g., {'text': 'query', 'image': 'url'})."
-                )
-
-            # Check for valid fragment types
-            valid_fragment_types = {"text", "image", "audio", "video"}
-            invalid_keys = set(media.keys()) - valid_fragment_types
-            if invalid_keys:
-                warn(
-                    f"Unknown media fragment types: {invalid_keys}. "
-                    f"Valid types are: {valid_fragment_types}"
-                )
-
-            # Validate fragment values are non-empty strings
-            for frag_type, frag_value in media.items():
-                if not isinstance(frag_value, str):
-                    raise ValueError(
-                        f"Media fragment '{frag_type}' must be a string, got {type(frag_value).__name__}"
-                    )
-                if not frag_value.strip():
-                    raise ValueError(
-                        f"Media fragment '{frag_type}' cannot be empty"
-                    )
-
-        # 3. Validate vector parameter
-        if vector is not None:
-            if not isinstance(vector, (list, tuple)):
-                raise ValueError(
-                    f"The 'vector' parameter must be a list or tuple of numbers, "
-                    f"got {type(vector).__name__}"
-                )
-
-            if len(vector) == 0:
-                raise ValueError("The 'vector' parameter cannot be empty")
-
-            # Validate all elements are numbers
-            for i, val in enumerate(vector):
-                if not isinstance(val, (int, float)):
-                    raise ValueError(
-                        f"Vector element at index {i} must be a number, "
-                        f"got {type(val).__name__}: {val}"
-                    )
-
-            # Optional: warn about common dimension mismatches
-            common_dimensions = {384, 768, 1024, 1536, 3072}
-            if len(vector) not in common_dimensions:
-                warn(
-                    f"Vector has {len(vector)} dimensions. Common embedding dimensions are "
-                    f"{sorted(common_dimensions)}. Ensure this matches your embedder configuration."
-                )
-
-        # 4. Validate hybrid parameter structure
-        if hybrid is not None:
-            if not isinstance(hybrid, dict):
-                raise ValueError(
-                    f"The 'hybrid' parameter must be a dictionary, got {type(hybrid).__name__}"
-                )
-
-            # Validate semanticRatio if present
-            if "semanticRatio" in hybrid:
-                ratio = hybrid["semanticRatio"]
-                if not isinstance(ratio, (int, float)):
-                    raise ValueError(
-                        f"hybrid.semanticRatio must be a number, got {type(ratio).__name__}"
-                    )
-                if not 0.0 <= ratio <= 1.0:
-                    raise ValueError(
-                        f"hybrid.semanticRatio must be between 0.0 and 1.0, got {ratio}"
-                    )
-
-        # ==========================================
-        # WARNINGS FOR INFORMATIONAL PURPOSES
-        # ==========================================
-
-        if not query:
-            if media and vector:
-                warn(
-                    "Query string is empty — using both media fragments and vector for search."
-                )
-            elif media:
-                media_types = ", ".join(media.keys())
-                warn(
-                    f"Query string is empty — using media fragments ({media_types}) for multimodal search."
-                )
-            elif vector:
-                warn(
-                    "Query string is empty — using vector for semantic search."
-                )
-
-        # ==========================================
-        # BUILD REQUEST BODY EXPLICITLY
-        # ==========================================
-
-        # Start with query
-        body: Dict[str, Any] = {"q": query if query else ""}
-
-        # Add validated special parameters
-        if media is not None:
-            body["media"] = media
-        if vector is not None:
-            body["vector"] = vector
-        if hybrid is not None:
-            body["hybrid"] = hybrid
-
-        # Add other optional parameters, excluding already-handled ones
-        protected_keys = {"q", "media", "vector", "hybrid"}
-        for key, value in opt_params.items():
-            if key not in protected_keys:
-                if key in body:
-                    warn(
-                        f"Parameter '{key}' specified in opt_params may be overridden. "
-                        f"Consider using the dedicated parameter instead."
-                    )
-                body[key] = value
+        body = {"q": query, **opt_params}
 
         return self.http.post(
             f"{self.config.paths.index}/{self.uid}/{self.config.paths.search}",
@@ -1192,8 +1012,7 @@ class Index:
             - 'dictionary': List of custom dictionary words
             - 'separatorTokens': List of separator tokens
             - 'nonSeparatorTokens': List of non-separator tokens
-            - 'embedders': Dictionary of embedder configurations (supports indexingFragments
-              and searchFragments for REST embedders to enable multimodal search)
+            - 'embedders': Dictionary of embedder configurations for AI-powered search
             - 'searchCutoffMs': Maximum search time in milliseconds
             - 'proximityPrecision': Precision for proximity ranking
             - 'localizedAttributes': Settings for localized attributes
