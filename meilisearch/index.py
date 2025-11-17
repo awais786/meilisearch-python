@@ -279,18 +279,23 @@ class Index:
         return IndexStats(**stats)
 
     @version_error_hint_message
-    def search(self, query: str, opt_params: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    def search(
+        self, query: Optional[str] = "", opt_params: Optional[Mapping[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Search in the index.
+
+        Supports traditional text search, vector search, and multimodal search using media fragments.
 
         https://www.meilisearch.com/docs/reference/api/search
 
         Parameters
         ----------
-        query:
-            String containing the searched word(s)
+        query (optional):
+            String containing the searched word(s). Can be empty or None when using media or vector parameter.
         opt_params (optional):
             Dictionary containing optional query parameters.
             Common parameters include:
+            - media: Dict with fragment types (e.g., {"text": "query", "image": "url"}) for multimodal search
             - hybrid: Dict with 'semanticRatio' and 'embedder' fields for hybrid search
             - vector: Array of numbers for vector search
             - retrieveVectors: Boolean to include vector data in search results
@@ -305,47 +310,94 @@ class Index:
 
         Raises
         ------
+        ValueError
+            If neither query nor media nor vector parameter is provided, or if media is not a dictionary.
         MeilisearchApiError
-            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+            An error containing details about why Meilisearch can't process your request.
+            Meilisearch error codes are described here:
+            https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+
+        Examples
+        --------
+        Traditional text search:
+            >>> index.search("space exploration")
+
+        Multimodal search with media fragments:
+            >>> index.search("", opt_params={
+            ...     "media": {"text": "space exploration"},
+            ...     "hybrid": {"embedder": "default"}
+            ... })
+
+        Multimodal search with both text and image:
+            >>> index.search("", opt_params={
+            ...     "media": {"text": "space exploration", "image": "https://example.com/poster.jpg"},
+            ...     "hybrid": {"embedder": "default", "semanticRatio": 0.8}
+            ... })
+
+        Hybrid search combining text and semantic:
+            >>> index.search("science fiction", opt_params={
+            ...     "hybrid": {"semanticRatio": 0.5, "embedder": "default"}
+            ... })
+
+        Vector search:
+            >>> index.search("", opt_params={
+            ...     "vector": [0.1, 0.2, 0.3, ...],
+            ...     "hybrid": {"embedder": "default"}
+            ... })
+
+        Notes
+        -----
+        - When both query and media.text are provided, they are combined in the search.
+        - The semanticRatio in hybrid search controls the balance between keyword and semantic search
+          (0.0 = pure keyword, 1.0 = pure semantic).
         """
         if opt_params is None:
             opt_params = {}
+
+        media = opt_params.get("media")
+        vector = opt_params.get("vector")
+
+        # Validate that at least one search input is provided
+        if not query and not media and not vector:
+            raise ValueError(
+                "You must provide at least one search input: "
+                "a query string, media fragments, or a vector."
+            )
+
+        # Validate media parameter type
+        if media is not None and not isinstance(media, dict):
+            raise ValueError(
+                "The 'media' parameter must be a dictionary with fragment types as keys "
+                "(e.g., {'text': 'query', 'image': 'url'})."
+            )
+
+        # Validate media parameter structure
+        if media:
+            valid_fragment_types = {"text", "image", "audio", "video"}
+            invalid_keys = set(media.keys()) - valid_fragment_types
+            if invalid_keys:
+                warn(
+                    f"Unknown media fragment types: {invalid_keys}. "
+                    f"Valid types are: {valid_fragment_types}"
+                )
+
+        # Provide informative warnings for empty query scenarios
+        if not query:
+            if media and vector:
+                warn(
+                    "Query string is empty — using both media fragments and vector for search."
+                )
+            elif media:
+                media_types = ", ".join(media.keys())
+                warn(
+                    f"Query string is empty — using media fragments ({media_types}) for multimodal search."
+                )
+            elif vector:
+                warn(
+                    "Query string is empty — using vector for semantic search."
+                )
 
         body = {"q": query, **opt_params}
-
-        return self.http.post(
-            f"{self.config.paths.index}/{self.uid}/{self.config.paths.search}",
-            body=body,
-        )
-
-    def search_with_media(
-        self, media: Dict[str, Any], opt_params: Optional[Mapping[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Search in the index using media parameter.
-
-        https://www.meilisearch.com/docs/reference/api/search
-
-        Parameters
-        ----------
-        media:
-            Dictionary containing media fragments to search with.
-        opt_params (optional):
-            Dictionary containing optional query parameters.
-
-        Returns
-        -------
-        results:
-            Dictionary with hits, offset, limit, processingTime and media
-
-        Raises
-        ------
-        MeilisearchApiError
-            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
-        """
-        if opt_params is None:
-            opt_params = {}
-
-        body = {"q": None, "media": media, **opt_params}
 
         return self.http.post(
             f"{self.config.paths.index}/{self.uid}/{self.config.paths.search}",
@@ -1046,7 +1098,8 @@ class Index:
             - 'dictionary': List of custom dictionary words
             - 'separatorTokens': List of separator tokens
             - 'nonSeparatorTokens': List of non-separator tokens
-            - 'embedders': Dictionary of embedder configurations
+            - 'embedders': Dictionary of embedder configurations (supports indexingFragments
+              and searchFragments for REST embedders to enable multimodal search)
             - 'searchCutoffMs': Maximum search time in milliseconds
             - 'proximityPrecision': Precision for proximity ranking
             - 'localizedAttributes': Settings for localized attributes
