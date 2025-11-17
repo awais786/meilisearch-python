@@ -278,6 +278,9 @@ class Index:
         stats = self.http.get(f"{self.config.paths.index}/{self.uid}/{self.config.paths.stat}")
         return IndexStats(**stats)
 
+    from typing import Optional, Mapping, Dict, Any, List, Union
+    from warnings import warn
+
     @version_error_hint_message
     def search(
         self, query: Optional[str] = "", opt_params: Optional[Mapping[str, Any]] = None
@@ -297,7 +300,7 @@ class Index:
             Common parameters include:
             - media: Dict with fragment types (e.g., {"text": "query", "image": "url"}) for multimodal search
             - hybrid: Dict with 'semanticRatio' and 'embedder' fields for hybrid search
-            - vector: Array of numbers for vector search
+            - vector: List/array of numbers for vector search
             - retrieveVectors: Boolean to include vector data in search results
             - filter: Filter queries by an attribute's value
             - limit: Maximum number of documents returned
@@ -311,7 +314,7 @@ class Index:
         Raises
         ------
         ValueError
-            If neither query nor media nor vector parameter is provided, or if media is not a dictionary.
+            If neither query nor media nor vector parameter is provided, or if parameters are invalid.
         MeilisearchApiError
             An error containing details about why Meilisearch can't process your request.
             Meilisearch error codes are described here:
@@ -350,29 +353,36 @@ class Index:
         - When both query and media.text are provided, they are combined in the search.
         - The semanticRatio in hybrid search controls the balance between keyword and semantic search
           (0.0 = pure keyword, 1.0 = pure semantic).
+        - Vector dimensions must match the embedder's dimensions (e.g., 3072 for text-embedding-3-large).
         """
         if opt_params is None:
             opt_params = {}
 
+        # Extract special parameters
         media = opt_params.get("media")
         vector = opt_params.get("vector")
+        hybrid = opt_params.get("hybrid")
 
-        # Validate that at least one search input is provided
+        # ==========================================
+        # VALIDATION SECTION
+        # ==========================================
+
+        # 1. Validate that at least one search input is provided
         if not query and not media and not vector:
             raise ValueError(
                 "You must provide at least one search input: "
                 "a query string, media fragments, or a vector."
             )
 
-        # Validate media parameter type
-        if media is not None and not isinstance(media, dict):
-            raise ValueError(
-                "The 'media' parameter must be a dictionary with fragment types as keys "
-                "(e.g., {'text': 'query', 'image': 'url'})."
-            )
+        # 2. Validate media parameter
+        if media is not None:
+            if not isinstance(media, dict):
+                raise ValueError(
+                    "The 'media' parameter must be a dictionary with fragment types as keys "
+                    "(e.g., {'text': 'query', 'image': 'url'})."
+                )
 
-        # Validate media parameter structure
-        if media:
+            # Check for valid fragment types
             valid_fragment_types = {"text", "image", "audio", "video"}
             invalid_keys = set(media.keys()) - valid_fragment_types
             if invalid_keys:
@@ -381,7 +391,67 @@ class Index:
                     f"Valid types are: {valid_fragment_types}"
                 )
 
-        # Provide informative warnings for empty query scenarios
+            # Validate fragment values are non-empty strings
+            for frag_type, frag_value in media.items():
+                if not isinstance(frag_value, str):
+                    raise ValueError(
+                        f"Media fragment '{frag_type}' must be a string, got {type(frag_value).__name__}"
+                    )
+                if not frag_value.strip():
+                    raise ValueError(
+                        f"Media fragment '{frag_type}' cannot be empty"
+                    )
+
+        # 3. Validate vector parameter
+        if vector is not None:
+            if not isinstance(vector, (list, tuple)):
+                raise ValueError(
+                    f"The 'vector' parameter must be a list or tuple of numbers, "
+                    f"got {type(vector).__name__}"
+                )
+
+            if len(vector) == 0:
+                raise ValueError("The 'vector' parameter cannot be empty")
+
+            # Validate all elements are numbers
+            for i, val in enumerate(vector):
+                if not isinstance(val, (int, float)):
+                    raise ValueError(
+                        f"Vector element at index {i} must be a number, "
+                        f"got {type(val).__name__}: {val}"
+                    )
+
+            # Optional: warn about common dimension mismatches
+            common_dimensions = {384, 768, 1024, 1536, 3072}
+            if len(vector) not in common_dimensions:
+                warn(
+                    f"Vector has {len(vector)} dimensions. Common embedding dimensions are "
+                    f"{sorted(common_dimensions)}. Ensure this matches your embedder configuration."
+                )
+
+        # 4. Validate hybrid parameter structure
+        if hybrid is not None:
+            if not isinstance(hybrid, dict):
+                raise ValueError(
+                    f"The 'hybrid' parameter must be a dictionary, got {type(hybrid).__name__}"
+                )
+
+            # Validate semanticRatio if present
+            if "semanticRatio" in hybrid:
+                ratio = hybrid["semanticRatio"]
+                if not isinstance(ratio, (int, float)):
+                    raise ValueError(
+                        f"hybrid.semanticRatio must be a number, got {type(ratio).__name__}"
+                    )
+                if not 0.0 <= ratio <= 1.0:
+                    raise ValueError(
+                        f"hybrid.semanticRatio must be between 0.0 and 1.0, got {ratio}"
+                    )
+
+        # ==========================================
+        # WARNINGS FOR INFORMATIONAL PURPOSES
+        # ==========================================
+
         if not query:
             if media and vector:
                 warn(
@@ -397,7 +467,31 @@ class Index:
                     "Query string is empty — using vector for semantic search."
                 )
 
-        body = {"q": query, **opt_params}
+        # ==========================================
+        # BUILD REQUEST BODY EXPLICITLY
+        # ==========================================
+
+        # Start with query
+        body: Dict[str, Any] = {"q": query if query else ""}
+
+        # Add validated special parameters
+        if media is not None:
+            body["media"] = media
+        if vector is not None:
+            body["vector"] = vector
+        if hybrid is not None:
+            body["hybrid"] = hybrid
+
+        # Add other optional parameters, excluding already-handled ones
+        protected_keys = {"q", "media", "vector", "hybrid"}
+        for key, value in opt_params.items():
+            if key not in protected_keys:
+                if key in body:
+                    warn(
+                        f"Parameter '{key}' specified in opt_params may be overridden. "
+                        f"Consider using the dedicated parameter instead."
+                    )
+                body[key] = value
 
         return self.http.post(
             f"{self.config.paths.index}/{self.uid}/{self.config.paths.search}",
