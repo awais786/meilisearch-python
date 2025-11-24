@@ -153,6 +153,79 @@ def index_with_documents_and_vectors(empty_index, small_movies):
 
 
 @fixture(scope="function")
+def mock_embedder_server():
+    """Fixture that starts a mock HTTP server to act as an embedder.
+
+    This server responds to embedding requests with fake vectors,
+    allowing us to test search_with_media without a real AI service.
+    """
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    import threading
+    import json
+
+    class MockEmbedderHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            # Return a fake embedding vector
+            response = {"data": [{"embedding": [0.1] * 512}]}
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response).encode())
+
+        def log_message(self, format, *args):
+            # Suppress logging
+            pass
+
+    # Start server in background thread
+    server = HTTPServer(('localhost', 8080), MockEmbedderHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    yield server
+
+    # Cleanup
+    server.shutdown()
+
+
+@fixture(scope="function")
+def index_with_rest_embedder(empty_index, small_movies, mock_embedder_server, experimental_features):
+    """Fixture for index with REST embedder configured for media search testing.
+
+    Uses a mock HTTP server to act as the embedder, allowing real
+    search_with_media() testing without external AI services.
+    """
+    def index_maker(index_uid=common.INDEX_UID, documents=small_movies):
+        experimental_features({"multimodal": True})
+        index = empty_index(index_uid)
+        # Configure REST embedder pointing to mock server
+        settings_update_task = index.update_embedders(
+            {
+                "default": {
+                    "source": "rest",
+                    "url": "http://localhost:8080/embed",
+                    "apiKey": "test-key",
+                    "dimensions": 512,
+                    "indexingFragments": {
+                        "text": {"value": "{{doc.title}}"}
+                    },
+                    "searchFragments": {
+                        "text": {"value": "{{fragment}}"}
+                    },
+                    "request": {"input": ["{{fragment}}"], "model": "test-model"},
+                    "response": {"data": [{"embedding": "{{embedding}}"}]},
+                }
+            }
+        )
+        index.wait_for_task(settings_update_task.task_uid)
+        # Add documents - embedder will be called via mock server
+        document_addition_task = index.add_documents(documents)
+        index.wait_for_task(document_addition_task.task_uid)
+        return index
+
+    return index_maker
+
+
+@fixture(scope="function")
 def index_with_documents_and_facets(empty_index, small_movies):
     def index_maker(index_uid=common.INDEX_UID, documents=small_movies):
         index = empty_index(index_uid)
@@ -308,3 +381,42 @@ def enable_network_options():
         json={"network": False},
         timeout=10,
     )
+
+
+@fixture
+def experimental_features():
+    """
+    Fixture to temporarily set experimental features for a test.
+
+    Usage:
+        def test_example(experimental_features):
+            experimental_features({"multimodal": True, "new_ui": True})
+    """
+    def _set_features(features: dict):
+        # Enable features
+        requests.patch(
+            f"{common.BASE_URL}/experimental-features",
+            headers={"Authorization": f"Bearer {common.MASTER_KEY}"},
+            json=features,
+            timeout=10,
+        )
+        # Return features so we can reset later
+        return features
+
+    yield _set_features
+
+    # Reset features after the test
+    def _reset(features: dict):
+        # Create a reset payload inside the function
+        reset_payload = {key: False for key in features.keys()}
+        requests.patch(
+            f"{common.BASE_URL}/experimental-features",
+            headers={"Authorization": f"Bearer {common.MASTER_KEY}"},
+            json=reset_payload,
+            timeout=10,
+        )
+
+@fixture
+def multimodal_enabled(experimental_features):
+    """Convenience fixture: enables multimodal experimental feature."""
+    experimental_features({"multimodal": True})

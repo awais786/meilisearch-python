@@ -984,6 +984,34 @@ class Client:
 
         return self.http.patch(f"chats/{workspace_uid}/settings", body=settings)
 
+    def get_experimental_features(self) -> dict:
+        """
+        Retrieve the current settings for all experimental features.
+
+        Returns:
+            dict: A mapping of feature names to their enabled/disabled state.
+
+        Example:
+            >>> client.get_experimental_features()
+        """
+        return self.http.get(self.config.paths.experimental_features)
+
+    def update_experimental_features(self, features: dict) -> dict:
+        """
+        Update one or more experimental features.
+
+        Args:
+            features (dict): A dictionary mapping feature names to booleans.
+                             For example, {"multimodal": True} to enable multimodal.
+
+        Returns:
+            dict: The updated experimental features settings.
+
+        Example:
+            >>> client.update_experimental_features({"multimodal": True})
+        """
+        return self.http.patch(self.config.paths.experimental_features, body=features)
+
     @staticmethod
     def _base64url_encode(data: bytes) -> str:
         return base64.urlsafe_b64encode(data).decode("utf-8").replace("=", "")
