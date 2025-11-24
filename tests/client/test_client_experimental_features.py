@@ -1,8 +1,7 @@
 """Tests for client experimental features methods."""
 
-
 def test_get_experimental_features(client):
-    """Test getting experimental features returns dict with multimodal feature."""
+    """Test getting experimental features returns a dict including 'multimodal'."""
     response = client.get_experimental_features()
 
     assert isinstance(response, dict)
@@ -24,34 +23,18 @@ def test_update_experimental_features(client):
     assert response.get("multimodal") == new_value
     assert client.get_experimental_features().get("multimodal") == new_value
 
-    # Reset
+    # Reset to original value
     client.update_experimental_features({"multimodal": initial_multimodal})
 
 
-def test_enable_disable_multimodal(client):
-    """Test enable and disable multimodal convenience methods."""
-    # Test enable
-    response = client.enable_multimodal()
-    assert response.get("multimodal") is True
-    assert client.get_experimental_features()["multimodal"] is True
-
-    # Test disable
-    response = client.disable_multimodal()
-    assert response.get("multimodal") is False
-    assert client.get_experimental_features()["multimodal"] is False
-
-
-def test_multimodal_idempotency(client):
-    """Test that enable/disable operations are idempotent."""
-    # Enable twice - should not error
-    client.enable_multimodal()
-    response = client.enable_multimodal()
+def test_multimodal_idempotency_generic(client):
+    """Test that updating multimodal via generic method is idempotent."""
+    # Enable twice
+    client.update_experimental_features({"multimodal": True})
+    response = client.update_experimental_features({"multimodal": True})
     assert response.get("multimodal") is True
 
-    # Disable twice - should not error
-    client.disable_multimodal()
-    response = client.disable_multimodal()
+    # Disable twice
+    client.update_experimental_features({"multimodal": False})
+    response = client.update_experimental_features({"multimodal": False})
     assert response.get("multimodal") is False
-
-
-

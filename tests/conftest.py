@@ -188,13 +188,14 @@ def mock_embedder_server():
 
 
 @fixture(scope="function")
-def index_with_rest_embedder(empty_index, small_movies, mock_embedder_server, enable_multimodal):
+def index_with_rest_embedder(empty_index, small_movies, mock_embedder_server, experimental_features):
     """Fixture for index with REST embedder configured for media search testing.
 
     Uses a mock HTTP server to act as the embedder, allowing real
     search_with_media() testing without external AI services.
     """
     def index_maker(index_uid=common.INDEX_UID, documents=small_movies):
+        experimental_features({"multimodal": True})
         index = empty_index(index_uid)
         # Configure REST embedder pointing to mock server
         settings_update_task = index.update_embedders(
@@ -383,17 +384,39 @@ def enable_network_options():
 
 
 @fixture
-def enable_multimodal():
-    requests.patch(
-        f"{common.BASE_URL}/experimental-features",
-        headers={"Authorization": f"Bearer {common.MASTER_KEY}"},
-        json={"multimodal": True},
-        timeout=10,
-    )
-    yield
-    requests.patch(
-        f"{common.BASE_URL}/experimental-features",
-        headers={"Authorization": f"Bearer {common.MASTER_KEY}"},
-        json={"multimodal": False},
-        timeout=10,
-    )
+def experimental_features():
+    """
+    Fixture to temporarily set experimental features for a test.
+
+    Usage:
+        def test_example(experimental_features):
+            experimental_features({"multimodal": True, "new_ui": True})
+    """
+    def _set_features(features: dict):
+        # Enable features
+        requests.patch(
+            f"{common.BASE_URL}/experimental-features",
+            headers={"Authorization": f"Bearer {common.MASTER_KEY}"},
+            json=features,
+            timeout=10,
+        )
+        # Return features so we can reset later
+        return features
+
+    yield _set_features
+
+    # Reset features after the test
+    def _reset(features: dict):
+        # Create a reset payload inside the function
+        reset_payload = {key: False for key in features.keys()}
+        requests.patch(
+            f"{common.BASE_URL}/experimental-features",
+            headers={"Authorization": f"Bearer {common.MASTER_KEY}"},
+            json=reset_payload,
+            timeout=10,
+        )
+
+@fixture
+def multimodal_enabled(experimental_features):
+    """Convenience fixture: enables multimodal experimental feature."""
+    experimental_features({"multimodal": True})

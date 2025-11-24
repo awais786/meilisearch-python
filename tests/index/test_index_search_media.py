@@ -5,6 +5,7 @@ request structure using a mock REST embedder HTTP server.
 """
 
 import pytest
+from meilisearch.index import Index
 
 
 # Minimal sanity test: ensure the method exists on Index class without network calls.
@@ -14,8 +15,6 @@ def test_search_with_media_method_exists():
     This avoids creating an actual index (which would call the server) so
     the test is safe to run in isolation.
     """
-    from meilisearch.index import Index
-
     assert hasattr(Index, "search_with_media")
     assert callable(getattr(Index, "search_with_media"))
 

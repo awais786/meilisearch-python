@@ -984,70 +984,33 @@ class Client:
 
         return self.http.patch(f"chats/{workspace_uid}/settings", body=settings)
 
-    def get_experimental_features(self) -> Dict[str, bool]:
-        """Get the current experimental features settings.
+    def get_experimental_features(self) -> dict:
+        """
+        Retrieve the current settings for all experimental features.
 
-        Returns
-        -------
-        experimental_features:
-            Dictionary containing the experimental features and their enabled/disabled status.
+        Returns:
+            dict: A mapping of feature names to their enabled/disabled state.
 
-        Raises
-        ------
-        MeilisearchApiError
-            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+        Example:
+            >>> client.get_experimental_features()
         """
         return self.http.get(self.config.paths.experimental_features)
 
-    def update_experimental_features(self, features: Mapping[str, bool]) -> Dict[str, bool]:
-        """Update experimental features settings.
+    def update_experimental_features(self, features: dict) -> dict:
+        """
+        Update one or more experimental features.
 
-        Parameters
-        ----------
-        features:
-            Dictionary containing the experimental features to enable/disable.
+        Args:
+            features (dict): A dictionary mapping feature names to booleans.
+                             For example, {"multimodal": True} to enable multimodal.
 
-        Returns
-        -------
-        experimental_features:
-            Dictionary containing the updated experimental features settings.
+        Returns:
+            dict: The updated experimental features settings.
 
-        Raises
-        ------
-        MeilisearchApiError
-            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
+        Example:
+            >>> client.update_experimental_features({"multimodal": True})
         """
         return self.http.patch(self.config.paths.experimental_features, body=features)
-
-    def enable_multimodal(self) -> Dict[str, bool]:
-        """Enable multimodal experimental feature.
-
-        Returns
-        -------
-        experimental_features:
-            Dictionary containing the updated experimental features settings.
-
-        Raises
-        ------
-        MeilisearchApiError
-            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
-        """
-        return self.update_experimental_features({"multimodal": True})
-
-    def disable_multimodal(self) -> Dict[str, bool]:
-        """Disable multimodal experimental feature.
-
-        Returns
-        -------
-        experimental_features:
-            Dictionary containing the updated experimental features settings.
-
-        Raises
-        ------
-        MeilisearchApiError
-            An error containing details about why Meilisearch can't process your request. Meilisearch error codes are described here: https://www.meilisearch.com/docs/reference/errors/error_codes#meilisearch-errors
-        """
-        return self.update_experimental_features({"multimodal": False})
 
     @staticmethod
     def _base64url_encode(data: bytes) -> str:
